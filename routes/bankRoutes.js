@@ -8,7 +8,7 @@ const {
   initializeBank,
   addBankBalance,
   getBankBalance
-} = require("../controllers/bankcontrollers");
+} = require("../controllers/bankControllers");
 
 router.post("/initialize",
   auth,
