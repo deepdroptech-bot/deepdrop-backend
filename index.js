@@ -14,6 +14,7 @@ const profitOrLossRoutes = require("./routes/profitOrLossRoutes");
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:5000",
   "https://whimsical-kleicha-e462dc.netlify.app",
 ];
 
@@ -60,6 +61,7 @@ app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
 });
 
+//Port listner
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
