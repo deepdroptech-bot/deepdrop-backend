@@ -14,7 +14,7 @@ const profitOrLossRoutes = require("./routes/profitOrLossRoutes");
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://whimsical-kleicha-e462dc.netlify.app/",
+  "https://whimsical-kleicha-e462dc.netlify.app",
 ];
 
 dotenv.config();
@@ -39,6 +39,8 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
+app.options("*", cors());
+
 
 app.use(express.json());
 
