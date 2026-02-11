@@ -1,32 +1,9 @@
-const cors = require("cors");
-
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5000",
-  "https://whimsical-kleicha-e462dc.netlify.app"
-];
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("CORS not allowed"), false);
-      }
-
-      return callback(null, true);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
-app.options("*", cors());
-
 const express = require("express");
+const cors = require("cors");
 const dotenv = require("dotenv");
+
 const connectDB = require("./config/db");
+
 const authRoutes = require("./routes/authRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const dailySalesRoutes = require("./routes/dailySalesRoutes");
@@ -37,14 +14,33 @@ const expenseRoutes = require("./routes/expenseRoutes");
 const retainedEarningsRoutes = require("./routes/retainedEarningsRoutes");
 const profitOrLossRoutes = require("./routes/profitOrLossRoutes");
 
-
 dotenv.config();
 
-const app = express();
+const app = express(); // ✅ CREATE APP FIRST
 
-
-// Database connection
 connectDB();
+
+// ✅ CORS MUST COME AFTER app IS CREATED
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://whimsical-kleicha-e462dc.netlify.app"
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (!allowedOrigins.includes(origin)) {
+        return callback(new Error("CORS not allowed"), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
+
+app.options("*", cors());
 
 // Middleware
 app.use(express.json());
@@ -65,11 +61,9 @@ app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
 });
 
-//Port listner
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
 
 module.exports = app;
