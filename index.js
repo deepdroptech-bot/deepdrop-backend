@@ -1,6 +1,31 @@
+const cors = require("cors");
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5000",
+  "https://whimsical-kleicha-e462dc.netlify.app"
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) === -1) {
+        return callback(new Error("CORS not allowed"), false);
+      }
+
+      return callback(null, true);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+app.options("*", cors());
+
 const express = require("express");
 const dotenv = require("dotenv");
-const cors = require("cors");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const staffRoutes = require("./routes/staffRoutes");
@@ -22,24 +47,6 @@ const app = express();
 connectDB();
 
 // Middleware
-const cors = require("cors");
-
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "https://whimsical-kleicha-e462dc.netlify.app"
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
-
-app.options("*", cors());
-
-
 app.use(express.json());
 
 // Routes
