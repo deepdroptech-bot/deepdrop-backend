@@ -23,20 +23,13 @@ connectDB();
 // ✅ CORS MUST COME AFTER app IS CREATED
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://localhost:3000",
   "https://whimsical-kleicha-e462dc.netlify.app"
 ];
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (!allowedOrigins.includes(origin)) {
-        return callback(new Error("CORS not allowed"), false);
-      }
-      return callback(null, true);
-    },
-    credentials: true,
+    origin: allowedOrigins,
+    credentials: true
   })
 );
 
