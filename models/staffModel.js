@@ -63,7 +63,7 @@ const staffSchema = new mongoose.Schema(
 
     position: {
       type: String,
-      enum: ["pump_attendant", "cashier", "supervisor", "manager", "accountant"],
+      enum: ["Pump Attendant", "Cashier", "Supervisor", "Manager", "Accountant"],
       required: true
     },
 

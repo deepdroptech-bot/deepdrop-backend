@@ -44,7 +44,7 @@ exports.createStaff = async (req, res) => {
       phone,
       nin,
       position,
-      baseSalary,
+      baseSalary: baseSalary ? Number(baseSalary) : undefined,
       photo: photoData,
       createdBy: req.user.id
     });
@@ -146,7 +146,7 @@ exports.updateStaff = async (req, res) => {
     staff.phone = phone || staff.phone;
     staff.nin = nin || staff.nin;
     staff.position = position || staff.position;
-    staff.baseSalary = baseSalary || staff.baseSalary;
+    staff.baseSalary = baseSalary !== undefined ? Number(baseSalary) : staff.baseSalary;
     staff.employmentStatus = employmentStatus || staff.employmentStatus;
 
     // 🔥 If new image uploaded
