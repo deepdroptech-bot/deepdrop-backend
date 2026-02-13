@@ -21,6 +21,7 @@ router.post(
   "/",
   auth,
   allowRoles("admin", "manager"),
+  upload.single("photo"),
   createStaff
 );
 
@@ -36,6 +37,7 @@ router.get(
   "/:id",
   auth,
   allowRoles("admin", "manager"),
+  upload.single("photo"),
   getStaffById
 );
 
