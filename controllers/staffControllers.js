@@ -18,6 +18,16 @@ exports.createStaff = async (req, res) => {
       return res.status(400).json({ msg: "Required fields missing" });
     }
 
+    if (!position) {
+  return res.status(400).json({ message: "Position is required" });
+}
+
+if (!baseSalary || isNaN(baseSalary)) {
+  return res.status(400).json({ message: "Valid salary required" });
+}
+
+console.log("Incoming body:", req.body);
+
     const existingStaff = await Staff.findOne({ staffId });
     if (existingStaff) {
       return res.status(400).json({ msg: "Staff already exists" });
