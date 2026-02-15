@@ -219,6 +219,50 @@ exports.getSingleDailySales = async (req, res) => {
 
 };
 
+//get all daily sales (with pagination, filtering by date range and approval status)
+exports.getAllDailySales = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, startDate, endDate, approvalStatus } = req.query;
+    const filter = { isDeleted: false };
+
+    if (startDate && endDate) {
+      filter.salesDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    if (approvalStatus) {
+      filter.approvalStatus = approvalStatus;
+    }
+
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+
+    const skip = (pageNum - 1) * limitNum;
+    const salesRecords = await DailySales.find(filter)
+      .populate("createdBy", "name email role")
+      .sort({ salesDate: -1 })
+      .skip(skip)
+      .limit(Number(limit));
+
+    const totalRecords = await DailySales.countDocuments(filter);
+
+    res.json({
+      page: Number(page),
+      limit: Number(limit),
+      totalRecords,
+      totalPages: Math.ceil(totalRecords / limit),
+      salesRecords
+    });
+  } catch (error) {
+    console.error("FETCH ALL DAILY SALES ERROR:", error);
+    res.status(500).json({
+      msg: "Failed to fetch all daily sales",
+      error: error.message
+    });
+  }
+};
 
 //summary of daily sales
 exports.getDailySalesSummary = async (req, res) => {

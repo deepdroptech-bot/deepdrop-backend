@@ -13,6 +13,7 @@ const {
   getDailySalesByDate,
   getSingleDailySales,
   getDailySalesSummary,
+  getAllDailySales,
   softDeleteDailySales
 } = require("../controllers/dailySalesControllers");
 
@@ -40,6 +41,11 @@ router.get("/submitted",
    auth, 
    allowRoles("accountant", "admin", "manager"),
    getSubmittedDailySales);
+
+router.get("/all",
+   auth, 
+   allowRoles("accountant", "admin"),
+   getAllDailySales);
 
 router.get("/",
    auth, 
