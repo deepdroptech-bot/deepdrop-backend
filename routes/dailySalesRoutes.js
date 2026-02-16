@@ -29,7 +29,7 @@ router.put("/:id",
 
 router.post("/:id/submit",
    auth, 
-   allowRoles("manager"), 
+   allowRoles("manager", "admin", "accountant"), 
    submitDailySales);
 
 router.post("/:id/approve", 
