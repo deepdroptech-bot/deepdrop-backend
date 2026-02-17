@@ -123,7 +123,7 @@ exports.getProfitSummary = async (req, res) => {
 
 exports.getAuditTrail = async (req, res) => {
   try {
-    const record = await DailySales.findById(req.params.id)
+    const record = await DailySales.findByDate(req.params.date)
       .populate("createdBy", "name role")
       .populate("submittedBy", "name role")
       .populate("approvedBy", "name role")

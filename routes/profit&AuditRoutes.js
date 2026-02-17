@@ -22,7 +22,7 @@ router.get("/profit-summary/",
     getProfitSummary
 );
 
-router.get("/audit-trail/:id",
+router.get("/audit-trail/:date",
     auth,
     allowRoles("admin"),
     getAuditTrail
