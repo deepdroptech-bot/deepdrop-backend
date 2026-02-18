@@ -79,10 +79,12 @@ exports.getProfitSummary = async (req, res) => {
 
           totalPMSLitres: { $sum: "$PMS.totalLitres" },
           totalPMSRevenue: { $sum: "$PMS.totalAmount" },
+          totalPMSExpenses: { $sum: "$PMS.totalExpenses" },
           totalPMSNet: { $sum: "$PMS.netSales" },
 
           totalAGOLitres: { $sum: "$AGO.litresSold" },
           totalAGORevenue: { $sum: "$AGO.totalAmount" },
+          totalAGOExpenses: { $sum: "$AGO.totalExpenses" }, 
           totalAGONet: { $sum: "$AGO.netSales" },
 
           totalOtherIncome: { $sum: "$totalOtherIncome" }
@@ -101,11 +103,13 @@ exports.getProfitSummary = async (req, res) => {
       PMS: {
         litres: data.totalPMSLitres,
         revenue: data.totalPMSRevenue,
+        expenses: data.totalPMSExpenses,
         netProfit: data.totalPMSNet
       },
       AGO: {
         litres: data.totalAGOLitres,
         revenue: data.totalAGORevenue,
+        expenses: data.totalAGOExpenses,
         netProfit: data.totalAGONet
       },
       otherIncome: data.totalOtherIncome,
