@@ -13,6 +13,7 @@ const profitAuditRoutes = require("./routes/profit&AuditRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const retainedEarningsRoutes = require("./routes/retainedEarningsRoutes");
 const profitOrLossRoutes = require("./routes/profitOrLossRoutes");
+const dashboardOverviewRoute = require("./routes/dashboardOverviewRoute");
 
 dotenv.config();
 
@@ -47,6 +48,7 @@ app.use("/api/profit-audit", profitAuditRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/retained-earnings", retainedEarningsRoutes);
 app.use("/api/profit-loss", profitOrLossRoutes);
+app.use("/api/dashboard", dashboardOverviewRoute);
 
 // Test route
 app.get("/", (req, res) => {
