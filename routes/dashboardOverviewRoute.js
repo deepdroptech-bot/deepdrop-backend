@@ -4,13 +4,13 @@ const router = express.Router();
 const auth = require("../middleware/authmiddleware");
 const allowRoles = require("../middleware/rolemiddleware");
 
-const { getDashboardOverview } = require("../controllers/dashboardOverviewController");
+const { getExecutiveDashboard } = require("../controllers/dashboardOverviewController");
 
 router.get(
   "/overview",
   auth,
   allowRoles("admin", "accountant"),
-  getDashboardOverview
+  getExecutiveDashboard
 );
 
 module.exports = router
