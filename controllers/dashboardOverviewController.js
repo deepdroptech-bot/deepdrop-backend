@@ -1,4 +1,4 @@
-const PMSPL = require("../models/dailySalesModel");
+const PMSPL = require("../models/profitOrLossModel");
 const Inventory = require("../models/inventoryModel");
 const Audit = require("../models/dailySalesModel");
 
