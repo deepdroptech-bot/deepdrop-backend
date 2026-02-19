@@ -13,7 +13,7 @@ const {
 } = require("../controllers/profitOrLossControllers");
 
 router.post(
-  "/pms-pl",
+  "/",
   auth,
   allowRoles("accountant", "admin"),
   createPMSPL

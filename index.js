@@ -47,7 +47,7 @@ app.use("/api/bank", bankRoutes);
 app.use("/api/profit-audit", profitAuditRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/retained-earnings", retainedEarningsRoutes);
-app.use("/api/profit-loss", profitOrLossRoutes);
+app.use("/api/pms-pl", profitOrLossRoutes);
 app.use("/api/dashboard", dashboardOverviewRoute);
 
 // Test route
