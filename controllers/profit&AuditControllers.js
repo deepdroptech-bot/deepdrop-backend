@@ -127,7 +127,16 @@ exports.getProfitSummary = async (req, res) => {
 
 exports.getAuditTrail = async (req, res) => {
   try {
-    const record = await DailySales.findByDate(req.params.date)
+
+    const start = new Date(req.params.date);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(req.params.date);
+    end.setHours(23, 59, 59, 999);
+
+    const record = await DailySales.findOne({
+      salesDate: { $gte: start, $lte: end }
+    })
       .populate("createdBy", "name role")
       .populate("submittedBy", "name role")
       .populate("approvedBy", "name role")
@@ -135,7 +144,9 @@ exports.getAuditTrail = async (req, res) => {
       .populate("deletedBy", "name role");
 
     if (!record) {
-      return res.status(404).json({ msg: "Sales record not found" });
+      return res.status(404).json({
+        msg: "Sales record not found"
+      });
     }
 
     res.json({
@@ -146,12 +157,14 @@ exports.getAuditTrail = async (req, res) => {
       updatedBy: record.updatedBy,
       updateReason: record.updateReason,
       deleted: record.isDeleted,
+      deletedBy: record.deletedBy,
       deleteReason: record.deleteReason
     });
 
   } catch (error) {
-    res.status(500).json({ msg: "Failed to fetch audit trail"
-     });
+    console.error("Audit Trail Error:", error);
+    res.status(500).json({
+      msg: "Failed to fetch audit trail"
+    });
   }
 };
-
