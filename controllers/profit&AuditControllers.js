@@ -34,11 +34,13 @@ exports.getDailyProfitReport = async (req, res) => {
     res.json({
       salesDate: report.salesDate,
       PMS: {
+        litres: report.PMS.totalLitres,
         revenue: report.PMS.totalAmount,
         expenses: report.PMS.totalExpenses,
         netProfit: report.PMS.netSales
       },
       AGO: {
+        litres: report.AGO.litresSold,
         revenue: report.AGO.totalAmount,
         expenses: report.AGO.totalExpenses,
         netProfit: report.AGO.netSales
