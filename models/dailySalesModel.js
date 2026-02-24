@@ -21,16 +21,13 @@ const otherIncomeSchema = new mongoose.Schema(
 const productSoldSchema = new mongoose.Schema(
   {
     itemName: {
-      type: String,
-      required: true
+      type: String
     },
     quantitySold: {
-      type: Number,
-      required: true
+      type: Number
     },
     pricePerUnit: {
-      type: Number,
-      required: true
+      type: Number
     },
     totalAmount: {
       type: Number,
