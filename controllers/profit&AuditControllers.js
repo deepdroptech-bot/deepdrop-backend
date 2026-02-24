@@ -35,12 +35,14 @@ exports.getDailyProfitReport = async (req, res) => {
       salesDate: report.salesDate,
       PMS: {
         litres: report.PMS.totalLitres,
+        price: report.PMS.pricePerLitre,
         revenue: report.PMS.totalAmount,
         expenses: report.PMS.totalExpenses,
         netProfit: report.PMS.netSales
       },
       AGO: {
         litres: report.AGO.litresSold,
+        price: report.AGO.pricePerLitre,
         revenue: report.AGO.totalAmount,
         expenses: report.AGO.totalExpenses,
         netProfit: report.AGO.netSales
