@@ -19,7 +19,7 @@ const {
 
 router.post("/", 
   auth, 
-  allowRoles("manager", "admin"), 
+  allowRoles("manager", "admin", "accountant"), 
   createDailySales);
 
 router.put("/:id", 
@@ -44,7 +44,7 @@ router.get("/submitted",
 
 router.get("/all",
    auth, 
-   allowRoles("accountant", "admin"),
+   allowRoles("accountant", "admin", "manager"),
    getAllDailySales);
 
 router.get("/",
