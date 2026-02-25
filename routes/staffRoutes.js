@@ -12,6 +12,7 @@ const {
   updateStaff,
   addBonus,
   addDeduction,
+  paySalary,
   deleteStaff,
   deactivateStaff,
   activateStaff
@@ -61,6 +62,13 @@ router.patch(
   auth,
   allowRoles("admin", "manager"),
   addDeduction
+);
+
+router.patch(
+  "/:id/pay",
+  auth,
+  allowRoles("admin", "accountant"),
+  paySalary
 );
 
 router.delete(

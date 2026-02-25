@@ -9,7 +9,7 @@ const { getExecutiveDashboard } = require("../controllers/dashboardOverviewContr
 router.get(
   "/overview",
   auth,
-  allowRoles("admin", "accountant"),
+  allowRoles("admin", "accountant", "manager"),
   getExecutiveDashboard
 );
 

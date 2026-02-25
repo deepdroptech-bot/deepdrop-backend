@@ -1,4 +1,5 @@
 const Staff = require('../models/staffModel');
+const bankBalanceModel = require('../models/bankModel');
 const cloudinary = require("../config/cloudinary");
 
 // create new staff
@@ -108,6 +109,61 @@ exports.addDeduction = async (req, res) => {
     msg: "Deduction applied",
     netSalary: staff.netSalary
   });
+};
+
+// pay staff salary and set last paid date with resseting net salary to 0 and deduct net salary from bank balance
+const mongoose = require("mongoose");
+
+exports.paySalary = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const staff = await Staff.findById(req.params.id).session(session);
+    if (!staff) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ msg: "Staff not found" });
+    }
+
+    const salaryToPay = staff.netSalary;
+
+    if (salaryToPay <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ msg: "No salary to pay" });
+    }
+
+    const bankBalance = await bankBalanceModel.findOne().session(session);
+
+    if (!bankBalance || bankBalance.PMS < salaryToPay) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ msg: "Insufficient bank balance" });
+    }
+
+    // Deduct from bank
+    bankBalance.PMS -= salaryToPay;
+    await bankBalance.save({ session });
+
+    // Clear adjustments (NOT 0)
+    staff.bonuses = [];
+    staff.deductions = [];
+    staff.lastPaidDate = new Date();
+
+    // DO NOT manually set netSalary
+    await staff.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.json({ msg: "Salary paid successfully", staff });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).json({ msg: "Server error", error: error.message });
+  }
 };
 
 // get single staff by id

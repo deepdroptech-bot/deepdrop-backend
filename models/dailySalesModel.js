@@ -138,6 +138,9 @@ totalProductsSales: {
     netSales: Number,
     totalOtherIncome: Number,
 
+    //notes
+    notes: [String],
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
