@@ -5,7 +5,8 @@ const {
   addExpense,
   closeExpenseDocument,
   getCurrentExpenseDocument,
-  getExpenseHistory
+  getExpenseHistory,
+  getExpensesForDocument
 } = require("../controllers/expenseController");
 
 const auth = require("../middleware/authmiddleware");
@@ -44,6 +45,13 @@ router.get(
   auth,
   allowRoles("admin", "accountant"),
   getExpenseHistory
+);
+
+router.get(
+  "/document/:id",
+  auth,
+  allowRoles("admin", "accountant"),
+  getExpensesForDocument
 );
 
 module.exports = router;

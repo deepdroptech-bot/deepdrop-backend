@@ -162,3 +162,26 @@ exports.getExpenseHistory = async (req, res) => {
     });
   }
 };
+
+// get all expenses for a closed document
+exports.getExpensesForDocument = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const document = await ExpenseDocument.findById(id)
+      .populate("createdBy", "name")
+      .populate("closedBy", "name");
+
+    if (!document) {
+      return res.status(404).json({
+        msg: "Expense document not found"
+      });
+    }
+    res.json(document);
+
+  } catch (error) {
+    res.status(500).json({
+      msg: "Failed to fetch expenses for document",
+      error: error.message
+    });
+  }
+};
