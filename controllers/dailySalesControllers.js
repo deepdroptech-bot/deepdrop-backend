@@ -81,21 +81,19 @@ exports.approveDailySales = async (req, res) => {
     inventory.fuel.PMS.totalQuantity -= sales.PMS.totalLitres;
     inventory.fuel.AGO.quantityLitres -= sales.AGO.litresSold;
 
-    //divide totallitres sold across wells proportionally
-    const pmsWells = inventory.fuel.PMS.wells;
-    const totalPMSInInventory = pmsWells.reduce(
-      (sum, well) => sum + well.quantity,
-      0
-    );
-    pmsWells.forEach(well => {
-      const proportion =
-        totalPMSInInventory > 0
-          ? well.quantity / totalPMSInInventory
-          : 0;
-      const litresToDeduct = sales.PMS.totalLitres * proportion;
-      well.quantity -= litresToDeduct;
-      if (well.quantity < 0) well.quantity = 0; //prevent negative stock
-    });
+    //deduct PMS litres proportionally from each well
+    if (Array.isArray(inventory.fuel.PMS.wells) && inventory.fuel.PMS.wells.length) {
+      const totalPMS = inventory.fuel.PMS.totalQuantity + sales.PMS.totalLitres; // add back sold litres to get original total
+      const deductionRatio = sales.PMS.totalLitres / totalPMS;
+      inventory.fuel.PMS.wells.forEach(well => {
+        const deduction = well.quantity * deductionRatio;
+        well.quantity -= deduction;
+      });
+    } else {
+      return res.status(400).json({
+        msg: "PMS wells not properly initialized in inventory"
+      });
+    }
 
   //deduct products sold from inventory stock
  if (Array.isArray(sales.productsSold)) {

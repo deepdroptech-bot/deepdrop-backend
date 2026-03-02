@@ -21,7 +21,7 @@ const app = express(); // ✅ CREATE APP FIRST
 
 connectDB();
 
-// ✅ CORS MUST COME AFTER app IS CREATED
+
 const allowedOrigins = [
   "http://localhost:5173",
   "https://deepdrroptech.netlify.app",
