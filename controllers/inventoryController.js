@@ -26,54 +26,100 @@ exports.initializeInventory = async (req, res) => {
   res.json({ msg: "Inventory initialized", inventory });
 };
 
-//add fuel stock to inventory
+// add fuel stock to inventory
 exports.addFuelStock = async (req, res) => {
   try {
+
     const inventory = await Inventory.findOne();
+
     if (!inventory) {
-      return res.status(404).json({ msg: "Inventory not found" });
+      return res.status(404).json({
+        msg: "Inventory not found"
+      });
     }
 
-    const { fuelType, wellNumber, quantity } = req.body;
+    const { fuelType, wellNumber, quantity, details } = req.body;
 
     const qty = Number(quantity);
     const wellNo = Number(wellNumber);
 
     if (isNaN(qty) || qty <= 0) {
-      return res.status(400).json({ msg: "Invalid quantity" });
+      return res.status(400).json({
+        msg: "Invalid quantity"
+      });
     }
 
     /* ===== PMS ===== */
     if (fuelType === "PMS") {
+
       const well = inventory.fuel.PMS.wells.find(
         w => w.wellNumber === wellNo
       );
 
       if (!well) {
-        return res.status(404).json({ msg: "Well not found" });
+        return res.status(404).json({
+          msg:"Well not found"
+        });
       }
 
       well.quantity += qty;
-      inventory.fuel.PMS.totalQuantity += qty;
+
+      // update total automatically
+      inventory.updatePMSTotal();
+
     }
 
     /* ===== AGO ===== */
     if (fuelType === "AGO") {
+
       inventory.fuel.AGO.quantityLitres += qty;
+
     }
 
+    /* ===== SAVE HISTORY ===== */
+
+    inventory.fuelHistory.push({
+
+      type:fuelType,
+
+      Quantity:qty,
+
+      wellNumber: fuelType === "PMS" 
+? wellNo 
+: null,
+
+      addedBy:req.user.id,
+
+      addedAt:Date.now(),
+
+      details: details || 
+        `Stock added to ${fuelType}`
+
+    });
+
     inventory.lastUpdatedBy = req.user.id;
+
     await inventory.save();
 
     res.json({
-      msg: "Fuel stock added successfully",
-      fuel: inventory.fuel
+
+      msg:"Fuel stock added successfully",
+
+      fuel:inventory.fuel
+
     });
-  } catch (error) {
+
+  } 
+  catch (error) {
+
     res.status(500).json({
-      msg: "Failed to add stock",
-      error: error.message
+
+      msg:"Failed to add stock",
+
+      error:error.message
+
     });
+
   }
 };
 
@@ -82,7 +128,7 @@ exports.addFuelStock = async (req, res) => {
 //add product quantity to inventory
 exports.addProductQuantity = async (req, res) => {
   try {
-    const { slotNumber, itemName, quantity } = req.body;
+    const { slotNumber, itemName, quantity, details } = req.body;
 
     const slotNo = Number(slotNumber);
     const qty = Number(quantity);
@@ -120,6 +166,23 @@ exports.addProductQuantity = async (req, res) => {
 
     // ✅ ADD quantity, don’t overwrite
     slot.quantity += qty;
+
+    /* ===== SAVE HISTORY ===== */
+
+    inventory.productHistory.push({
+
+      slotNumber:slotNo,
+
+      itemName:itemName,
+
+      quantity:qty,
+
+      createdBy:req.user.id,
+
+      details: details || 
+        `Stock added to slot ${slotNo}`
+
+    });
 
     inventory.lastUpdatedBy = req.user.id;
     await inventory.save();
@@ -165,4 +228,112 @@ exports.getProductInventory = async (req, res) => {
   } catch (error) {
     res.status(500).json({ msg: "Failed to get product inventory" });
   }
+};
+
+exports.getFuelHistory = async (req,res) => {
+  try {
+    const { type, well } = req.query;
+
+    if(!type) {
+      return res.status(400).json({ msg:"Fuel type required" });
+    }
+
+    const inventory = await Inventory.findOne();
+    if(!inventory) {
+      return res.status(404).json({ msg:"Inventory not found" });
+    }
+
+    // start with full history
+    let history = inventory.fuelHistory || [];
+
+    // filter by type
+    history = history.filter(h => h.type === type.toUpperCase());
+
+    // filter by well if provided
+    if (well && type.toUpperCase() === "PMS") {
+      history = history.filter(h => h.wellNumber === Number(well));
+    }
+
+    // sort by newest first
+    history.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({ history });
+  } catch(err) {
+    console.error("Fuel history error:", err);
+    res.status(500).json({ msg:"Server error" });
+  }
+};
+// get product inventory history
+exports.getProductHistory = async (req,res)=>{
+
+try{
+
+const { slotNumber, page = 1, limit = 20 } = req.query;
+
+const inventory = await Inventory
+.findOne()
+.populate("productHistory.createdBy","name");
+
+if(!inventory){
+
+return res.status(404).json({
+
+msg:"Inventory not found"
+
+});
+
+}
+
+let history = inventory.productHistory;
+
+// optional slot filter
+if(slotNumber){
+
+history = history.filter(
+item => 
+item.slotNumber === Number(slotNumber)
+);
+
+}
+
+// newest first
+history = history
+.sort((a,b)=>
+new Date(b.createdAt) -
+new Date(a.createdAt)
+);
+
+// pagination
+const start = (page - 1) * limit;
+const end = start + Number(limit);
+
+const paginated = history.slice(start,end);
+
+res.json({
+
+total:history.length,
+
+page:Number(page),
+
+pages:Math.ceil(
+history.length / limit
+),
+
+history:paginated
+
+});
+
+}
+catch(error){
+
+res.status(500).json({
+
+msg:"Failed to fetch product history",
+
+error:error.message
+
+});
+
+}
+
 };

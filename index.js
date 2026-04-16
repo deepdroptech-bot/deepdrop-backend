@@ -14,18 +14,20 @@ const expenseRoutes = require("./routes/expenseRoutes");
 const retainedEarningsRoutes = require("./routes/retainedEarningsRoutes");
 const profitOrLossRoutes = require("./routes/profitOrLossRoutes");
 const dashboardOverviewRoute = require("./routes/dashboardOverviewRoute");
+const pdfRouter = require("./routes/pdfRouter");
 
 dotenv.config();
 
-const app = express(); // ✅ CREATE APP FIRST
+const app = express(); 
 
 connectDB();
 
-
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://deepdroop.netlify.app",
+  
+  "https://ddeepdrop.netlify.app",
 ];
+
 
 app.use(
   cors({
@@ -37,6 +39,7 @@ app.use(
 // Middleware
 app.use(express.json());
 app.use("/uploads", express.static("uploads")); // serve uploaded images
+app.use("/public",express.static("public")); 
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -49,15 +52,16 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/retained-earnings", retainedEarningsRoutes);
 app.use("/api/pms-pl", profitOrLossRoutes);
 app.use("/api/dashboard", dashboardOverviewRoute);
+app.use("/api/pdf", pdfRouter);
 
 // Test route
 app.get("/", (req, res) => {
-  res.send("Backend is running 🚀");
+  res.send("Backend 2 is running 🚀");
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 6000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server2 running on port ${PORT}`);
 });
 
 module.exports = app;

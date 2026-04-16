@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 
-/* ---------- OTHER SCHEMAS ---------- */
+/* ===========================
+   OTHER SCHEMAS
+=========================== */
+
 const expenseSchema = new mongoose.Schema(
   {
     description: String,
@@ -17,257 +20,286 @@ const otherIncomeSchema = new mongoose.Schema(
   { _id: false }
 );
 
-//products sold
 const productSoldSchema = new mongoose.Schema(
   {
-    itemName: {
-      type: String
-    },
-    quantitySold: {
-      type: Number
-    },
-    pricePerUnit: {
-      type: Number
-    },
-    totalAmount: {
-      type: Number,
-      default: 0
-    }
+    itemName: String,
+    quantitySold: Number,
+    pricePerUnit: Number,
+    totalAmount: { type: Number, default: 0 }
   },
   { _id: false }
 );
 
+/* ===========================
+   PMS PRICE SEGMENT
+=========================== */
+const priceSegmentSchema = new mongoose.Schema(
+  {
+    pricePerLitre: { type: Number, required: true },
+    startTime: Date
+  },
+  { _id: false }
+);
 
-/* ---------- PMS PUMP SCHEMA ---------- */
+/* ===========================
+   PUMP SALES SEGMENT
+=========================== */
+const pumpSaleSchema = new mongoose.Schema(
+  {
+    openingMeter: { type: Number, required: true },
+    closingMeter: { type: Number, default: 0 },
+    priceIndex: { type: Number, required: true },
+    meterLitres: { type: Number, default: 0 },
+    calibrationLitres: { type: Number, default: 0 },
+    netLitresSold: { type: Number, default: 0 },
+    totalAmount: { type: Number, default: 0 },
+    calibrationReason: String,
+    calibratedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+  },
+  { _id: false }
+);
+
+/* ===========================
+   PMS PUMP
+=========================== */
 const pmsPumpSchema = new mongoose.Schema(
   {
-    pumpNumber: {
-      type: Number,
-      enum: [1, 2],
-      required: true
-    },
-
-    openingMeter: {
-      type: Number,
-      required: true
-    },
-
-    closingMeter: {
-      type: Number,
-      required: true
-    },
-
-    litresSold: {
-      type: Number,
-      default: 0
-    }
+    pumpNumber: { type: Number, enum: [1, 2, 3, 4], required: true },
+    sales: [pumpSaleSchema],
+    totalLitres: { type: Number, default: 0 },
+    totalAmount: { type: Number, default: 0 }
   },
   { _id: false }
 );
 
-/* ---------- GENERIC METER SCHEMA (AGO) ---------- */
+/* ===========================
+   AGO
+=========================== */
 const meterSaleSchema = new mongoose.Schema(
   {
     openingMeter: Number,
     closingMeter: Number,
+    calibrationLitres: { type: Number, default: 0 },
+    calibrationReason: String,
     litresSold: Number,
     pricePerLitre: Number,
     totalAmount: Number,
-
-  expenses: [expenseSchema],
-  totalExpenses: {
-    type: Number,
-    default: 0
+    expenses: { type: [expenseSchema], default: [] },
+    totalExpenses: { type: Number, default: 0 },
+    ANetSales: Number
   },
-
-  netSales: Number
-},
-
   { _id: false }
 );
 
-/* ---------- DAILY SALES ---------- */
+/* ===========================
+   HELPER FUNCTIONS
+=========================== */
+
+// Sync pump segments for new price changes (same day)
+function syncPumpSegments(doc) {
+  const priceCount = doc.PMS.priceSegments.length;
+
+  doc.PMS.pumps.forEach((pump) => {
+    if (!pump.sales) pump.sales = [];
+
+    // First segment
+    if (pump.sales.length === 0) {
+      pump.sales.push({
+        openingMeter: 0,
+        closingMeter: 0,
+        priceIndex: 0,
+        calibrationLitres: 0
+      });
+    }
+
+    // Add new segments if price added
+    while (pump.sales.length < priceCount) {
+      const last = pump.sales[pump.sales.length - 1];
+      pump.sales.push({
+        openingMeter: last.closingMeter || last.openingMeter,
+        closingMeter: 0,
+        priceIndex: pump.sales.length,
+        calibrationLitres: 0
+      });
+    }
+
+    // Remove extra segments if needed
+    if (pump.sales.length > priceCount) {
+      pump.sales = pump.sales.slice(0, priceCount);
+    }
+
+    // Auto carry forward between segments
+    for (let i = 1; i < pump.sales.length; i++) {
+      const prev = pump.sales[i - 1];
+      const current = pump.sales[i];
+      if (prev.closingMeter) current.openingMeter = prev.closingMeter;
+    }
+  });
+}
+
+// Carry forward closing meters from previous day
+async function carryForwardPreviousDayMeters(doc) {
+  const DailySales = mongoose.model("DailySales");
+
+  const previousDay = new Date(doc.salesDate);
+  previousDay.setDate(previousDay.getDate() - 1);
+
+  const prevSales = await DailySales.findOne({
+    salesDate: previousDay,
+    isDeleted: false
+  });
+
+  if (!prevSales) return;
+
+  doc.PMS.pumps.forEach((pump) => {
+    const prevPump = prevSales.PMS.pumps.find((p) => p.pumpNumber === pump.pumpNumber);
+    if (!prevPump) return;
+
+    const lastSegment = prevPump.sales[prevPump.sales.length - 1];
+    if (!lastSegment) return;
+
+    // Set first segment opening meter
+    if (pump.sales.length) {
+      pump.sales[0].openingMeter = lastSegment.closingMeter || lastSegment.openingMeter;
+    }
+  });
+}
+
+/* ===========================
+   DAILY SALES SCHEMA
+=========================== */
 const dailySalesSchema = new mongoose.Schema(
   {
-    salesDate: {
-      type: Date,
-      required: true,
-      unique: true
+    salesDate: { type: Date, required: true },
+
+    PMS: {
+      priceSegments: [priceSegmentSchema],
+      pumps: [pmsPumpSchema],
+      totalLitres: Number,
+      totalAmount: Number,
+      expenses: { type: [expenseSchema], default: [] },
+      totalExpenses: { type: Number, default: 0 },
+      pNetSales: Number
     },
-
-PMS: {
-  pumps: {
-    type: [pmsPumpSchema],
-    validate: {
-      validator: v => v.length === 2,
-      message: "PMS must have exactly 2 pumps"
-    }
-  },
-
-  pricePerLitre: {
-    type: Number,
-    required: true
-  },
-
-  totalLitres: Number,
-  totalAmount: Number,
-
-  expenses: [expenseSchema],
-  totalExpenses: {
-    type: Number,
-    default: 0
-  },
-
-  netSales: Number
-},
 
     AGO: meterSaleSchema,
 
-  productsSold: [productSoldSchema],
-
-totalProductsSales: {
-  type: Number,
-  default: 0
-},
-
+    productsSold: [productSoldSchema],
+    totalProductsSales: { type: Number, default: 0 },
 
     otherIncome: [otherIncomeSchema],
+    totalOtherIncome: Number,
 
     totalSalesAmount: Number,
     totalExpenses: Number,
     netSales: Number,
-    totalOtherIncome: Number,
 
-    //notes
-    notes: [String],
-
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true
-    },
-
-    approvalStatus: {
-  type: String,
-  enum: ["draft", "submitted", "approved"],
-  default: "draft"
+    notes:{
+type:[String],
+default:[]
 },
 
-submittedBy: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User"
-},
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
-submittedAt: {
-  type: Date
-},
-
-approvedBy: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User"
-},
-
-approvedAt: {
-  type: Date
-},
-
-isLocked: {
-  type: Boolean,
-  default: false
-},
-
-
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User"
-    },
-
+    approvalStatus: { type: String, enum: ["draft", "submitted", "approved"], default: "draft" },
+    submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    submittedAt: Date,
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    approvedAt: Date,
+    isLocked: { type: Boolean, default: false },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     updateReason: String,
-
-    isDeleted: {
-      type: Boolean,
-      default: false
-    },
-
+    isDeleted: { type: Boolean, default: false },
     deletedAt: Date,
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User"
-    },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     deleteReason: String
   },
   { timestamps: true }
 );
 
-/* =========================
+/* ===========================
    PRE-SAVE CALCULATIONS
-========================= */
+=========================== */
+dailySalesSchema.pre("validate", function(next) {
+  if (this.salesDate) {
+    this.salesDate = new Date(this.salesDate);
+    this.salesDate.setHours(0, 0, 0, 0);
+  }
+  next();
+});
 
-dailySalesSchema.pre("save", function (next) {
-  /* ========= PMS CALCULATIONS ========= */
+dailySalesSchema.pre("save", async function (next) {
+  // 1️⃣ Sync pump segments and next day opening meters
+  syncPumpSegments(this);
+  if (this.isNew) {
+    await carryForwardPreviousDayMeters(this);
+  }
+
+  /* ===== PMS CALCULATIONS ===== */
   let pmsTotalLitres = 0;
+  let pmsTotalAmount = 0;
 
-  this.PMS.pumps.forEach(pump => {
-    pump.litresSold = pump.closingMeter - pump.openingMeter;
-    pmsTotalLitres += pump.litresSold;
+  this.PMS.pumps.forEach((pump) => {
+    let pumpLitres = 0;
+    let pumpAmount = 0;
+
+    pump.sales.forEach((segment) => {
+      // Validation
+      if (segment.closingMeter < segment.openingMeter) {
+        throw new Error(`Pump ${pump.pumpNumber} closing meter cannot be less than opening meter`);
+      }
+
+      segment.meterLitres = (segment.closingMeter || 0) - segment.openingMeter;
+      segment.netLitresSold = segment.meterLitres - segment.calibrationLitres;
+
+      const price = this.PMS.priceSegments[segment.priceIndex]?.pricePerLitre || 0;
+      segment.totalAmount = segment.netLitresSold * price;
+
+      pumpLitres += segment.netLitresSold;
+      pumpAmount += segment.totalAmount;
+    });
+
+    pump.totalLitres = pumpLitres;
+    pump.totalAmount = pumpAmount;
+
+    pmsTotalLitres += pumpLitres;
+    pmsTotalAmount += pumpAmount;
   });
 
   this.PMS.totalLitres = pmsTotalLitres;
-  this.PMS.totalAmount =
-    pmsTotalLitres * this.PMS.pricePerLitre;
+  this.PMS.totalAmount = pmsTotalAmount;
+this.PMS.totalExpenses = (this.PMS.expenses || []).reduce(
+  (sum, e) => sum + (e.amount || 0),
+  0
+);
+  this.PMS.pNetSales = this.PMS.totalAmount - this.PMS.totalExpenses;
 
-  this.PMS.totalExpenses = this.PMS.expenses.reduce(
-    (sum, e) => sum + e.amount,
-    0
-  );
+  /* ===== AGO CALCULATIONS ===== */
+  if (this.AGO) {
+    this.AGO.litresSold = (this.AGO.closingMeter || 0) - (this.AGO.openingMeter || 0) - this.AGO.calibrationLitres;
+    this.AGO.totalAmount = this.AGO.litresSold * this.AGO.pricePerLitre;
+    this.AGO.totalExpenses = (this.AGO.expenses || []).reduce(
+  (sum, e) => sum + (e.amount || 0),
+  0
+);
+    this.AGO.ANetSales = this.AGO.totalAmount - this.AGO.totalExpenses;
+  }
 
-  this.PMS.netSales =
-    this.PMS.totalAmount - this.PMS.totalExpenses;
-
-  /* ========= AGO CALCULATIONS ========= */
-  this.AGO.litresSold =
-    this.AGO.closingMeter - this.AGO.openingMeter;
-
-  this.AGO.totalAmount =
-    this.AGO.litresSold * this.AGO.pricePerLitre;
-
-  this.AGO.totalExpenses = this.AGO.expenses.reduce(
-    (sum, e) => sum + e.amount,
-    0
-  );
-
-  this.AGO.netSales =
-    this.AGO.totalAmount - this.AGO.totalExpenses;
-
-  /* ========= TOTALS ========= */
-  this.totalSalesAmount =
-    this.PMS.totalAmount + this.AGO.totalAmount;
-
-  this.totalExpenses =
-    this.PMS.totalExpenses + this.AGO.totalExpenses;
-
-  this.netSales =
-    this.PMS.netSales + this.AGO.netSales;
-
-  /* ========= OTHER INCOME ========= */
-  this.totalOtherIncome = this.otherIncome.reduce(
-    (sum, i) => sum + i.amount,
-    0
-  );
-
-  // ===== PRODUCTS SOLD =====
-let productsTotal = 0;
-
-if (Array.isArray(this.productsSold)) {
-  this.productsSold.forEach(product => {
-    product.totalAmount =
-      product.quantitySold * product.pricePerUnit;
-
-    productsTotal += product.totalAmount;
+  /* ===== PRODUCTS SOLD ===== */
+  let productsTotal = 0;
+  this.productsSold.forEach((p) => {
+    p.totalAmount = p.quantitySold * p.pricePerUnit;
+    productsTotal += p.totalAmount;
   });
-}
+  this.totalProductsSales = productsTotal;
 
-this.totalProductsSales = productsTotal;
+  /* ===== OTHER INCOME ===== */
+  this.totalOtherIncome = this.otherIncome.reduce((sum, i) => sum + i.amount, 0);
+
+  /* ===== TOTALS ===== */
+  this.totalSalesAmount = this.PMS.totalAmount + (this.AGO?.totalAmount || 0) + this.totalProductsSales + this.totalOtherIncome;
+  this.totalExpenses = this.PMS.totalExpenses + (this.AGO?.totalExpenses || 0);
+  this.netSales = this.totalSalesAmount - this.totalExpenses;
 
   next();
 });

@@ -33,24 +33,33 @@ exports.getDailyProfitReport = async (req, res) => {
 
     res.json({
       salesDate: report.salesDate,
+
       PMS: {
         litres: report.PMS.totalLitres,
-        price: report.PMS.pricePerLitre,
+        priceSegments: report.PMS.priceSegments,
         revenue: report.PMS.totalAmount,
         expenses: report.PMS.totalExpenses,
-        netProfit: report.PMS.netSales
+        netProfit: report.PMS.pNetSales
       },
-      AGO: {
-        litres: report.AGO.litresSold,
-        price: report.AGO.pricePerLitre,
-        revenue: report.AGO.totalAmount,
-        expenses: report.AGO.totalExpenses,
-        netProfit: report.AGO.netSales
-      },
+
+      AGO: report.AGO
+        ? {
+            litres: report.AGO.litresSold,
+            price: report.AGO.pricePerLitre,
+            revenue: report.AGO.totalAmount,
+            expenses: report.AGO.totalExpenses,
+            netProfit: report.AGO.ANetSales
+          }
+        : null,
+
+      products: report.totalProductsSales,
+
       otherIncome: report.totalOtherIncome,
+
       totalNetProfit:
-        report.PMS.netSales +
-        report.AGO.netSales +
+        report.PMS.pNetSales +
+        (report.AGO?.ANetSales || 0) +
+        report.totalProductsSales +
         report.totalOtherIncome
     });
 
@@ -67,6 +76,7 @@ exports.getProfitSummary = async (req, res) => {
     const { from, to } = req.query;
 
     const summary = await DailySales.aggregate([
+
       {
         $match: {
           salesDate: {
@@ -77,54 +87,121 @@ exports.getProfitSummary = async (req, res) => {
           isDeleted: false
         }
       },
+
+      // unwind pumps
+      { $unwind: "$PMS.pumps" },
+
+      // 🔥 unwind sales segments (VERY IMPORTANT)
+      { $unwind: "$PMS.pumps.sales" },
+
+      {
+        $group: {
+          _id: "$_id",
+
+          pump12Litres: {
+            $sum: {
+              $cond: [
+                { $in: ["$PMS.pumps.pumpNumber", [1, 2]] },
+                "$PMS.pumps.sales.netLitresSold",
+                0
+              ]
+            }
+          },
+
+          pump34Litres: {
+            $sum: {
+              $cond: [
+                { $in: ["$PMS.pumps.pumpNumber", [3, 4]] },
+                "$PMS.pumps.sales.netLitresSold",
+                0
+              ]
+            }
+          },
+
+          totalPMSLitres: {
+            $sum: "$PMS.pumps.sales.netLitresSold"
+          },
+
+          totalPMSRevenue: { $first: "$PMS.totalAmount" },
+          totalPMSExpenses: { $first: "$PMS.totalExpenses" },
+          totalPMSNet: { $first: "$PMS.pNetSales" },
+
+          totalAGOLitres: { $first: "$AGO.litresSold" },
+          totalAGORevenue: { $first: "$AGO.totalAmount" },
+          totalAGOExpenses: { $first: "$AGO.totalExpenses" },
+          totalAGONet: { $first: "$AGO.ANetSales" },
+
+          totalProductSold: { $first: "$totalProductsSales" },
+          totalOtherIncome: { $first: "$totalOtherIncome" }
+        }
+      },
+
       {
         $group: {
           _id: null,
 
-          totalPMSLitres: { $sum: "$PMS.totalLitres" },
-          totalPMSRevenue: { $sum: "$PMS.totalAmount" },
-          totalPMSExpenses: { $sum: "$PMS.totalExpenses" },
-          totalPMSNet: { $sum: "$PMS.netSales" },
+          pump12Litres: { $sum: "$pump12Litres" },
+          pump34Litres: { $sum: "$pump34Litres" },
+          totalPMSLitres: { $sum: "$totalPMSLitres" },
 
-          totalAGOLitres: { $sum: "$AGO.litresSold" },
-          totalAGORevenue: { $sum: "$AGO.totalAmount" },
-          totalAGOExpenses: { $sum: "$AGO.totalExpenses" }, 
-          totalAGONet: { $sum: "$AGO.netSales" },
+          totalPMSRevenue: { $sum: "$totalPMSRevenue" },
+          totalPMSExpenses: { $sum: "$totalPMSExpenses" },
+          totalPMSNet: { $sum: "$totalPMSNet" },
 
+          totalAGOLitres: { $sum: "$totalAGOLitres" },
+          totalAGORevenue: { $sum: "$totalAGORevenue" },
+          totalAGOExpenses: { $sum: "$totalAGOExpenses" },
+          totalAGONet: { $sum: "$totalAGONet" },
+
+          totalProductSold: { $sum: "$totalProductSold" },
           totalOtherIncome: { $sum: "$totalOtherIncome" }
         }
       }
     ]);
 
     if (!summary.length) {
-      return res.json({ msg: "No data for selected period" });
+      return res.json({ msg: "No data" });
     }
 
     const data = summary[0];
 
     res.json({
       period: { from, to },
+
       PMS: {
-        litres: data.totalPMSLitres,
+        pump12Litres: data.pump12Litres,
+        pump34Litres: data.pump34Litres,
+        totalLitres: data.totalPMSLitres,
         revenue: data.totalPMSRevenue,
         expenses: data.totalPMSExpenses,
         netProfit: data.totalPMSNet
       },
+
       AGO: {
         litres: data.totalAGOLitres,
         revenue: data.totalAGORevenue,
         expenses: data.totalAGOExpenses,
         netProfit: data.totalAGONet
       },
+
+      products: {
+        revenue: data.totalProductSold
+      },
+
       otherIncome: data.totalOtherIncome,
+
       grandTotalProfit:
         data.totalPMSNet +
         data.totalAGONet +
+        data.totalProductSold +
         data.totalOtherIncome
     });
 
   } catch (error) {
-    res.status(500).json({ msg: "Failed to generate profit summary" });
+    console.error(error);
+    res.status(500).json({
+      msg: "Failed to generate profit summary"
+    });
   }
 };
 
@@ -169,6 +246,76 @@ exports.getAuditTrail = async (req, res) => {
     console.error("Audit Trail Error:", error);
     res.status(500).json({
       msg: "Failed to fetch audit trail"
+    });
+  }
+};
+
+exports.getPumpCalibrationAudit = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    const audit = await DailySales.aggregate([
+      {
+        $match: {
+          salesDate: {
+            $gte: new Date(from),
+            $lte: new Date(to)
+          }
+        }
+      },
+
+      { $unwind: "$PMS.pumps" },
+      { $unwind: "$PMS.pumps.sales" },
+
+      {
+        $match: {
+          "PMS.pumps.sales.calibrationLitres": { $gt: 0 }
+        }
+      },
+
+      {
+        $project: {
+          salesDate: 1,
+          pumpNumber: "$PMS.pumps.pumpNumber",
+          calibrationLitres: "$PMS.pumps.sales.calibrationLitres",
+          calibrationReason: "$PMS.pumps.sales.calibrationReason",
+          calibratedBy: "$PMS.pumps.sales.calibratedBy"
+        }
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "calibratedBy",
+          foreignField: "_id",
+          as: "staff"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$staff",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $project: {
+          salesDate: 1,
+          pumpNumber: 1,
+          calibrationLitres: 1,
+          calibrationReason: 1,
+          staffName: "$staff.name"
+        }
+      }
+    ]);
+
+    res.json(audit);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      msg: "Failed audit fetch"
     });
   }
 };

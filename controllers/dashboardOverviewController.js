@@ -1,12 +1,15 @@
-const PMSPL = require("../models/profitOrLossModel");
+const DailySales = require("../models/dailySalesModel");
+const ExpenseDocument = require("../models/expenseModel");
 const Inventory = require("../models/inventoryModel");
-const Audit = require("../models/dailySalesModel");
+const BankBalance = require("../models/bankModel");
+
+const { generateInsights } = require("../helpers/insights");
 
 exports.getExecutiveDashboard = async (req, res) => {
   try {
-    /* ===================================
+    /* =========================
        DATE HELPERS
-    =================================== */
+    ========================= */
     const today = new Date();
     const startOfToday = new Date(today.setHours(0, 0, 0, 0));
 
@@ -19,41 +22,24 @@ exports.getExecutiveDashboard = async (req, res) => {
       1
     );
 
-    /* ===================================
-       INVENTORY
-    =================================== */
-    const inventory = await Inventory.findOne();
+    /* =========================
+       DAILY SALES (APPROVED ONLY)
+    ========================= */
+    const approvedFilter = { approvalStatus: "approved", isDeleted: false };
 
-    const pmsQty = inventory?.fuel?.PMS?.totalQuantity || 0;
-    const agoQty = inventory?.fuel?.AGO?.quantityLitres || 0;
-
-    const productSlots = inventory?.products?.slots || [];
-
-    const lowProducts = productSlots.filter(
-      p => p.itemName && p.quantity < 10
-    );
-
-    const inventoryHealthScore =
-      ((pmsQty > 5000 ? 1 : 0) +
-        (agoQty > 2000 ? 1 : 0) +
-        (lowProducts.length === 0 ? 1 : 0)) / 3 * 100;
-
-    /* ===================================
-       TODAY VS YESTERDAY PERFORMANCE
-    =================================== */
-    const todaySales = await PMSPL.aggregate([
-      { $match: { createdAt: { $gte: startOfToday }, status: "approved" } },
-      { $group: { _id: null, total: { $sum: "$pmsNetSales" } } }
+    const todaySales = await DailySales.aggregate([
+      { $match: { ...approvedFilter, salesDate: { $gte: startOfToday } } },
+      { $group: { _id: null, total: { $sum: "$netSales" } } }
     ]);
 
-    const yesterdaySales = await PMSPL.aggregate([
+    const yesterdaySales = await DailySales.aggregate([
       {
         $match: {
-          createdAt: { $gte: startOfYesterday, $lt: startOfToday },
-          status: "approved"
+          ...approvedFilter,
+          salesDate: { $gte: startOfYesterday, $lt: startOfToday }
         }
       },
-      { $group: { _id: null, total: { $sum: "$pmsNetSales" } } }
+      { $group: { _id: null, total: { $sum: "$netSales" } } }
     ]);
 
     const todayTotal = todaySales[0]?.total || 0;
@@ -64,80 +50,210 @@ exports.getExecutiveDashboard = async (req, res) => {
         ? 0
         : ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100;
 
-    /* ===================================
-       MONTHLY REVENUE
-    =================================== */
-    const monthlyRevenue = await PMSPL.aggregate([
+    /* =========================
+       MONTHLY NET SALES
+    ========================= */
+    const monthlyNetSales = await DailySales.aggregate([
       {
         $match: {
-          createdAt: { $gte: startOfMonth },
-          status: "approved"
+          ...approvedFilter,
+          salesDate: { $gte: startOfMonth }
         }
       },
       {
         $group: {
-          _id: { $dayOfMonth: "$createdAt" },
-          revenue: { $sum: "$pmsNetSales" }
+          _id: { $dayOfMonth: "$salesDate" },
+          total: { $sum: "$netSales" }
         }
       },
       { $sort: { "_id": 1 } }
     ]);
 
-    /* ===================================
-       TOTAL PROFIT & MARGIN
-    =================================== */
-    const profitData = await PMSPL.aggregate([
-      { $match: { status: "approved" } },
+    /* =========================
+       EXPENSE DOCUMENT TOTAL
+    ========================= */
+    const expenseDocs = await ExpenseDocument.aggregate([
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: "$pmsNetSales" },
-          totalProfit: { $sum: "$profitOrLoss" }
+          totalExpenses: { $sum: "$totalAmount" }
         }
       }
     ]);
 
-    const totalRevenue = profitData[0]?.totalRevenue || 0;
-    const totalProfit = profitData[0]?.totalProfit || 0;
+    const totalExpensesDoc = expenseDocs[0]?.totalExpenses || 0;
+
+    /* =========================
+       TOTAL NET SALES
+    ========================= */
+    const totalNetSalesAgg = await DailySales.aggregate([
+      { $match: approvedFilter },
+      {
+        $group: {
+          _id: null,
+          totalNetSales: { $sum: "$netSales" }
+        }
+      }
+    ]);
+
+    const totalNetSales = totalNetSalesAgg[0]?.totalNetSales || 0;
+
+    /* =========================
+       PROFIT (NEW LOGIC)
+    ========================= */
+    const totalProfit = totalNetSales - totalExpensesDoc;
 
     const profitMargin =
-      totalRevenue === 0
+      totalNetSales === 0
         ? 0
-        : (totalProfit / totalRevenue) * 100;
+        : (totalProfit / totalNetSales) * 100;
 
-    /* ===================================
-       FUEL BREAKDOWN
-    =================================== */
-    const fuelBreakdown = await Audit.aggregate([
+    /* =========================
+       BEST PERFORMING PRODUCT
+    ========================= */
+    const bestProductAgg = await DailySales.aggregate([
+      { $match: approvedFilter },
+      { $unwind: "$productsSold" },
       {
         $group: {
-          _id: null,
-          totalPMSLitres: { $sum: "$pmsLitresSold" },
-          totalAGOLitres: { $sum: "$agoLitresSold" }
+          _id: "$productsSold.itemName",
+          totalRevenue: { $sum: "$productsSold.totalAmount" },
+          totalQty: { $sum: "$productsSold.quantitySold" }
         }
-      }
+      },
+      { $sort: { totalRevenue: -1 } },
+      { $limit: 1 }
     ]);
 
-    /* ===================================
+    const bestProduct = bestProductAgg[0] || null;
+
+    /* =========================
+       INVENTORY SUMMARY
+    ========================= */
+    const inventory = await Inventory.findOne();
+
+    const pmsQty = inventory?.fuel?.PMS?.totalQuantity || 0;
+    const agoQty = inventory?.fuel?.AGO?.quantityLitres || 0;
+
+    const lowProducts =
+      inventory?.products?.slots.filter(
+        (p) => p.itemName && p.quantity < 10
+      ) || [];
+
+   const productChartAgg = await DailySales.aggregate([
+  { $match: approvedFilter },
+
+  { $unwind: "$productsSold" },
+
+  {
+    $group: {
+      _id: "$productsSold.itemName",
+      totalQty: { $sum: "$productsSold.quantitySold" }
+    }
+  },
+
+  { $sort: { totalQty: -1 } },
+  { $limit: 10 }
+]);
+
+const productSalesChart = productChartAgg.map(p => ({
+  name:
+    p._id.length > 12
+      ? p._id.slice(0, 12) + "..."
+      : p._id,
+  value: p.totalQty
+}));
+
+const productSlots = inventory?.products?.slots || [];
+
+const productInventoryChart = productSlots
+  .filter(p => p.quantity > 0)
+  .sort((a, b) => b.quantity - a.quantity)
+  .slice(0, 10)
+  .map(p => ({
+    name:
+      p.itemName.length > 12
+        ? p.itemName.slice(0, 12) + "..."
+        : p.itemName,
+    value: p.quantity
+  }));
+
+  const fuelHistory =
+  inventory?.fuelHistory
+    ?.sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
+    ?.slice(0, 5) || [];
+
+const productHistory =
+  inventory?.productHistory
+    ?.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    ?.slice(0, 5) || [];
+
+    const formattedFuelHistory = fuelHistory.map((item) => ({
+  type: item.type,
+  quantity: item.Quantity,
+  wellNumber: item.wellNumber,
+  date: item.addedAt,
+  details: item.details
+}));
+
+const formattedProductHistory = productHistory.map((item) => ({
+  slot: item.slotNumber,
+  name: item.itemName,
+  quantity: item.quantity,
+  date: item.createdAt,
+  details: item.details
+}));
+
+    /* =========================
+       BANK SUMMARY
+    ========================= */
+    const bank = await BankBalance.findOne();
+
+    const totalBankBalance =
+      (bank?.PMS || 0) +
+      (bank?.AGO || 0) +
+      (bank?.products || 0) +
+      (bank?.otherIncome || 0);
+
+    const recentBankHistory = bank?.history
+      ?.sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
+      ?.slice(0, 5);
+
+    /* =========================
        RECENT SALES
-    =================================== */
-    const recentActivities = await Audit.find()
+    ========================= */
+    const recentSales = await DailySales.find(approvedFilter)
       .sort({ createdAt: -1 })
       .limit(5);
 
-    /* ===================================
-       EXECUTIVE SUMMARY
-    =================================== */
-    const summary =
-      growthRate > 0
-        ? "Revenue is growing compared to yesterday."
-        : growthRate < 0
-        ? "Revenue dropped compared to yesterday."
-        : "Revenue performance is stable.";
+    /* =========================
+       INSIGHTS
+    ========================= */
+    const insights = generateInsights({
+      agoProfit: inventory ? (pmsQty * 150 - agoQty * 120) : 0, // Example profit calculation
+      pmsProfit: inventory ? (pmsQty * 200 - pmsQty * 150) : 0, // Example profit calculation
+      growthRate,
+      totalExpenses: totalExpensesDoc,
+      totalNetSales,
+      totalBankBalance,
+      lowProducts,
+      bestProduct
+    });
 
-    /* ===================================
-       FINAL RESPONSE
-    =================================== */
+    /* =========================
+       EXECUTIVE SUMMARY
+    ========================= */
+    let summary = "Business is stable.";
+
+    if (growthRate > 5) {
+      summary = "Strong growth in revenue observed.";
+    } else if (growthRate < 0) {
+      summary = "Revenue declined compared to yesterday.";
+    }
+
+    /* =========================
+       RESPONSE
+    ========================= */
     res.json({
       performance: {
         todayRevenue: todayTotal,
@@ -146,7 +262,8 @@ exports.getExecutiveDashboard = async (req, res) => {
       },
 
       totals: {
-        totalRevenue,
+        totalNetSales,
+        totalExpenses: totalExpensesDoc,
         totalProfit,
         profitMargin: profitMargin.toFixed(2)
       },
@@ -155,19 +272,32 @@ exports.getExecutiveDashboard = async (req, res) => {
         pmsQty,
         agoQty,
         lowProductsCount: lowProducts.length,
-        healthScore: inventoryHealthScore.toFixed(0)
+        productChart: productInventoryChart,
+        productSalesChart: productSalesChart,
+        fuelHistory: formattedFuelHistory,
+        productHistory: formattedProductHistory
       },
+
+      bank: {
+        totalBalance: totalBankBalance,
+        breakdown: {
+          PMS: bank?.PMS || 0,
+          AGO: bank?.AGO || 0,
+          products: bank?.products || 0,
+          otherIncome: bank?.otherIncome || 0
+        },
+        recentTransactions: recentBankHistory || []
+      },
+
+      bestPerformingProduct: bestProduct,
 
       charts: {
-        monthlyRevenue
+        monthlyNetSales
       },
 
-      fuelBreakdown: fuelBreakdown[0] || {
-        totalPMSLitres: 0,
-        totalAGOLitres: 0
-      },
+      insights,
 
-      recentActivities,
+      recentSales,
       executiveSummary: summary
     });
 
@@ -175,4 +305,3 @@ exports.getExecutiveDashboard = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-

@@ -3,25 +3,46 @@ const Inventory = require("../models/inventoryModel");
 const BankBalance = require("../models/bankModel");
 
 //create daily sales record as draft
-
 exports.createDailySales = async (req, res) => {
   try {
-    const sales = await DailySales.create({
-      ...req.body,
+    const data = {...req.body };
+    data.salesDate = new Date(data.salesDate);
+data.salesDate.setHours(0, 0, 0, 0);
+
+    const existingSales = await DailySales.findOne({ salesDate: req.body.salesDate });
+
+if (existingSales) {
+  return res.status(400).json({
+    success: false,
+    message: "Sales for this date already exist"
+  });
+}
+
+const sales = await DailySales.create({
+      ...data,
       createdBy: req.user.id,
       approvalStatus: "draft"
     });
 
     res.status(201).json({
+      success: true,
       msg: "Daily sales created as draft",
       sales
     });
   } catch (error) {
-    res.status(500).json({
-      msg: "Failed to create daily sales",
-      error: error.message
-    });
-  }
+
+  console.error("❌ DAILY SALES ERROR:");
+  console.error("Message:", error.message);
+  console.error("Stack:", error.stack);
+  console.error("Body:", req.body);
+  console.error("User:", req.user?.id);
+
+  res.status(500).json({
+    success: false,
+    msg: "Internal server error",
+    error: error.message   // optional (remove in production later)
+  });
+}
 };
 
 //submit daily sales for approval
@@ -30,11 +51,12 @@ exports.submitDailySales = async (req, res) => {
     const sales = await DailySales.findById(req.params.id);
 
     if (!sales) {
-      return res.status(404).json({ msg: "Sales not found" });
+      return res.status(404).json({ success: false, msg: "Sales not found" });
     }
 
     if (sales.approvalStatus !== "draft") {
       return res.status(400).json({
+        success: false,
         msg: "Sales already submitted or approved"
       });
     }
@@ -45,9 +67,10 @@ exports.submitDailySales = async (req, res) => {
 
     await sales.save();
 
-    res.json({ msg: "Daily sales submitted for approval" });
+    res.json({ success: true, msg: "Daily sales submitted for approval" });
   } catch (error) {
     res.status(500).json({
+      success: false,
       msg: "Failed to submit daily sales",
       error: error.message
     });
@@ -58,11 +81,12 @@ exports.approveDailySales = async (req, res) => {
   try {
     const sales = await DailySales.findById(req.params.id);
     if (!sales) {
-      return res.status(404).json({ msg: "Sales not found" });
+      return res.status(404).json({ success: false, msg: "Sales not found" });
     }
 
     if (sales.approvalStatus !== "submitted") {
       return res.status(400).json({
+        success: false,
         msg: "Sales must be submitted before approval"
       });
     }
@@ -73,28 +97,56 @@ exports.approveDailySales = async (req, res) => {
 
     if (!inventory || !bank) {
       return res.status(400).json({
+        success: false,
         msg: "Inventory or Bank record not initialized"
       });
     }
 
+    const safeNumber = (val) => {
+  const num = Number(val);
+  return isNaN(num) ? 0 : num;
+};
+
     /* ===== INVENTORY UPDATE ===== */
-    inventory.fuel.PMS.totalQuantity -= sales.PMS.totalLitres;
-    inventory.fuel.AGO.quantityLitres -= sales.AGO.litresSold;
+    inventory.fuel.PMS.totalQuantity -= safeNumber(sales.PMS.totalLitres);
+inventory.fuel.AGO.quantityLitres -= safeNumber(sales.AGO.litresSold);
 
-    //deduct PMS litres proportionally from each well
-    if (Array.isArray(inventory.fuel.PMS.wells) && inventory.fuel.PMS.wells.length) {
-      const totalPMS = inventory.fuel.PMS.totalQuantity + sales.PMS.totalLitres; // add back sold litres to get original total
-      const deductionRatio = sales.PMS.totalLitres / totalPMS;
-      inventory.fuel.PMS.wells.forEach(well => {
-        const deduction = well.quantity * deductionRatio;
-        well.quantity -= deduction;
-      });
-    } else {
-      return res.status(400).json({
-        msg: "PMS wells not properly initialized in inventory"
-      });
-    }
+    //deduct PMS sold from respective wells(Total litres of pump 1 and 2 deducted from well 1 and total litres of pump 3 and 4 deducted from well 2)
+ 
 
+const calculatePumpTotal = (pump) => {
+  if (!Array.isArray(pump.sales)) return 0;
+
+  return pump.sales.reduce((total, sale) => {
+    const opening = safeNumber(sale.openingMeter);
+    const closing = safeNumber(sale.closingMeter);
+    const calibration = safeNumber(sale.calibrationLitres);
+
+    const litres = Math.max(closing - opening, 0);
+    const net = Math.max(litres - calibration, 0);
+
+    return total + net;
+  }, 0);
+};
+
+let pump1Litres = 0;
+let pump2Litres = 0;
+let pump3Litres = 0;
+let pump4Litres = 0;
+
+if (Array.isArray(sales.PMS.pumps)) {
+  sales.PMS.pumps.forEach(p => {
+    const total = calculatePumpTotal(p);
+
+    if (p.pumpNumber === 1) pump1Litres += total;
+    if (p.pumpNumber === 2) pump2Litres += total;
+    if (p.pumpNumber === 3) pump3Litres += total;
+    if (p.pumpNumber === 4) pump4Litres += total;
+  });
+  //deduct PMS from respective wells
+  inventory.fuel.PMS.wells[0].quantity -= pump1Litres + pump2Litres;
+  inventory.fuel.PMS.wells[1].quantity -= pump3Litres + pump4Litres;
+}
   //deduct products sold from inventory stock
  if (Array.isArray(sales.productsSold)) {
   sales.productsSold.forEach(soldItem => {
@@ -117,8 +169,8 @@ exports.approveDailySales = async (req, res) => {
     //
 
     /* ===== BANK UPDATE ===== */
-    bank.PMS += sales.PMS.netSales;
-    bank.AGO += sales.AGO.netSales;
+    bank.PMS += sales.PMS.pNetSales;
+    bank.AGO += sales.AGO.ANetSales;
     bank.otherIncome += sales.totalOtherIncome;
     bank.products += sales.totalProductsSales;
 
@@ -133,11 +185,12 @@ exports.approveDailySales = async (req, res) => {
 
     await sales.save();
 
-    res.json({ msg: "Daily sales approved and locked" });
+    res.json({ success: true, msg: "Daily sales approved and locked" });
 
   } catch (error) {
     console.error("APPROVE DAILY SALES ERROR:", error);
     res.status(500).json({
+      success: false,
       msg: "Failed to approve daily sales",
       error: error.message
     });
@@ -200,7 +253,9 @@ exports.getDailySalesByDate = async (req, res) => {
 exports.getSingleDailySales = async (req, res) => {
   try {
     const sales = await DailySales.findById(req.params.id)
-      .populate("createdBy", "name email role");
+      .populate("createdBy", "name email role")
+      .populate("submittedBy", "name email role")
+      .populate("approvedBy", "name email role");
 
     if (!sales) {
       return res.status(404).json({ msg: "Daily sales not found" });
@@ -220,29 +275,32 @@ exports.getSingleDailySales = async (req, res) => {
 //get all daily sales (with pagination, filtering by date range and approval status)
 exports.getAllDailySales = async (req, res) => {
   try {
-    const { page = 1, limit = 10, startDate, endDate, approvalStatus } = req.query;
-    const filter = { isDeleted: false };
+    const { page = 1, limit = 10, approvalStatus, salesDate } = req.query;
 
-    if (startDate && endDate) {
-      filter.salesDate = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
+const filter = { isDeleted: false };
 
-    if (approvalStatus) {
-      filter.approvalStatus = approvalStatus;
-    }
+if (salesDate) {
+  const start = new Date(salesDate);
+  const end = new Date(salesDate);
+  end.setDate(end.getDate() + 1);
 
-    const pageNum = Number(page) || 1;
-    const limitNum = Number(limit) || 10;
+  filter.salesDate = { $gte: start, $lt: end };
+}
 
-    const skip = (pageNum - 1) * limitNum;
-    const salesRecords = await DailySales.find(filter)
-      .populate("createdBy", "name email role")
-      .sort({ salesDate: -1 })
-      .skip(skip)
-      .limit(Number(limit));
+if (approvalStatus) {
+  filter.approvalStatus = approvalStatus;
+}
+
+const pageNum = Number(page) || 1;
+const limitNum = Number(limit) || 10;
+
+const skip = (pageNum - 1) * limitNum;
+
+const salesRecords = await DailySales.find(filter)
+  .populate("createdBy", "name email role")
+  .sort({ salesDate: -1 })
+  .skip(skip)
+  .limit(limitNum);
 
     const totalRecords = await DailySales.countDocuments(filter);
 
@@ -357,11 +415,12 @@ exports.updateDailySales = async (req, res) => {
     const sales = await DailySales.findById(req.params.id);
 
     if (!sales) {
-      return res.status(404).json({ msg: "Sales record not found" });
+      return res.status(404).json({ success: false, msg: "Sales record not found" });
     }
 
     if (sales.isLocked) {
       return res.status(403).json({
+        success: false,
         msg: "Approved sales cannot be edited"
       });
     }
@@ -374,15 +433,24 @@ exports.updateDailySales = async (req, res) => {
     await sales.save();
 
     res.json({
+      success: true,
       msg: "Daily sales updated",
       sales
     });
   } catch (error) {
-    res.status(500).json({
-      msg: "Failed to update daily sales",
-      error: error.message
-    });
-  }
+
+  console.error("❌ DAILY SALES ERROR:");
+  console.error("Message:", error.message);
+  console.error("Stack:", error.stack);
+  console.error("Body:", req.body);
+  console.error("User:", req.user?.id);
+
+  res.status(500).json({
+    success: false,
+    msg: "Internal server error",
+    error: error.message   // optional (remove in production later)
+  });
+}
 };
 
 //delete daily sales(soft delete) admin only

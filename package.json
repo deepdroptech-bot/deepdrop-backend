@@ -11,15 +11,19 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sparticuz/chromium": "^143.0.4",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "fs-extra": "^11.3.4",
+    "handlebars": "^4.7.8",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.21.0",
     "multer": "^2.0.2",
-    "multer-storage-cloudinary": "^4.0.0"
+    "multer-storage-cloudinary": "^4.0.0",
+    "puppeteer-core": "^24.39.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
