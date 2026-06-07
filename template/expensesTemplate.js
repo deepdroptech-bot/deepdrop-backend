@@ -1,78 +1,118 @@
 const companyHeader = require("../helpers/pdfHeader");
-
 const companyFooter = require("../helpers/pdfFooter");
 
 const generateExpenseHTML = (expenses) => {
-    formatCurrency = (amount) => {
+
+    if (!expenses || expenses.length === 0) {
+        return `
+        <html>
+        <body style="font-family: Arial; padding: 30px;">
+            <h2>No expenses found for this document</h2>
+        </body>
+        </html>`;
+    }
+
+    const formatCurrency = (amount) => {
         return new Intl.NumberFormat("en-NG", {
             style: "currency",
             currency: "NGN"
-        }).format(amount);
-    }
+        }).format(amount || 0);
+    };
 
-    return `<div class="section">
-    <html>  
+    const sorted = [...expenses].sort(
+  (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+);
+
+    const firstDate = sorted[0]?.createdAt;
+    const lastDate = sorted[sorted.length - 1]?.createdAt;
+
+    return `
+    <html>
     <head>
-    <style>
-    body{
-    .company-header{
+        <style>
+            body {
+                font-family: Arial;
+                padding: 30px;
+            }
 
-text-align:center;
-margin-bottom:20px;
+            .company-header {
+                text-align: center;
+                margin-bottom: 20px;
+            }
 
-}
+            footer {
+                text-align: center;
+                margin-top: 30px;
+                color: #888;
+                font-size: 12px;
+            }
 
-footer{
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
 
-text-align:center;
-margin-top:30px;
-color:#888;
+            th, td {
+                border: 1px solid #ddd;
+                padding: 10px;
+            }
 
-font-size:12px;
-}
-    font-family:Arial;
+            th {
+                background: #f4f4f4;
+            }
 
-    padding:30px;
-    }
-</style>
+            .total-row {
+                font-weight: bold;
+                background: #f9f9f9;
+            }
+        </style>
     </head>
+
     <body>
-    ${companyHeader("Expenses Report")}
-    <div class="section-title">Expenses</div>
-    <p><strong>Period:</strong> ${new Date(expenses[0].createdAt).toLocaleDateString()} - ${new Date(expenses[expenses.length - 1].createdAt).toLocaleDateString()}</p>
-    <div class="section">
-    <table>
 
-    <thead>
-    <tr>
-    <th>Description</th>
-    <th>Amount</th>
-    <th>Category</th>
-    </tr>
-    </thead>
-    <tbody>
+        ${companyHeader("Expenses Report")}
 
-    ${expenses.map(expense => `
-    <tr>
-    <td>${expense.description}</td>
-    <td>${formatCurrency(expense.amount)}</td>
-    <td>${expense.category}</td>
-    </tr>
-    `).join('')}
-    </tbody>
+        <h3>Expenses</h3>
 
-    <tr>
-    <td><strong>Total Expenses</strong></td>
-    <td>${formatCurrency(expenses.reduce((sum, e) => sum + e.amount, 0))}</td>
-    <td></td>
-    </tr>
+        <p>
+            <strong>Period:</strong>
+            ${firstDate ? new Date(firstDate).toLocaleDateString() : "N/A"}
+            -
+            ${lastDate ? new Date(lastDate).toLocaleDateString() : "N/A"}
+        </p>
 
-    </table>
-    </div>
-    Generated on ${new Date().toLocaleString()}
-    ${companyFooter()}
+        <table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Category</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                ${expenses.map(expense => `
+                    <tr>
+                        <td>${expense.description || ""}</td>
+                        <td>${formatCurrency(expense.amount)}</td>
+                        <td>${expense.category || ""}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+
+            <tr class="total-row">
+                <td>Total Expenses</td>
+                <td>${formatCurrency(expenses.reduce((sum, e) => sum + (e.amount || 0), 0))}</td>
+                <td></td>
+            </tr>
+        </table>
+
+        <p>Generated on ${new Date().toLocaleString()}</p>
+
+        ${companyFooter()}
+
     </body>
     </html>`;
-}
+};
 
 module.exports = generateExpenseHTML;
