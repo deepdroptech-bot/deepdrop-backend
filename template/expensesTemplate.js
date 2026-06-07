@@ -1,7 +1,11 @@
 const companyHeader = require("../helpers/pdfHeader");
 const companyFooter = require("../helpers/pdfFooter");
 
-const generateExpenseHTML = (expenses) => {
+const generateExpenseHTML = (expenses = []) => {
+
+    if (!Array.isArray(expenses)) {
+        expenses = [];
+    }
 
     if (!expenses || expenses.length === 0) {
         return `

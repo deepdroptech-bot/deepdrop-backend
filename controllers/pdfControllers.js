@@ -122,6 +122,12 @@ exports.generateStaffSalaryPDF = async (req, res) => {
 
 exports.generateExpensePDF = async (req, res) => {
   try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({
+        message: "Expense document ID is required"
+      });
+    }
     const expenses = await expense.findById(req.params.id)
       .populate("createdBy closedBy");
     if (!expenses) {
