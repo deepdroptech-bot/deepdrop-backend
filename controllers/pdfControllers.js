@@ -128,9 +128,9 @@ exports.generateExpensePDF = async (req, res) => {
         message: "Expense document ID is required"
       });
     }
-    const expenses = await expense.findById(req.params.id)
+    const expenseDoc = await expense.findById(req.params.id)
       .populate("createdBy closedBy");
-    if (!expenses) {
+    if (!expenseDoc) {
       return res.status(404).json({ message: "Expense document not found" });
     }
     const browser = await puppeteer.launch({
@@ -139,7 +139,7 @@ exports.generateExpensePDF = async (req, res) => {
       headless: chromium.headless,
     });
     const page = await browser.newPage();
-    const html = generateExpenseHTML([expenses]);
+    const html = generateExpenseHTML(expenseDoc);
     await page.setContent(html, { waitUntil: "networkidle0" });
     const pdf = await page.pdf({
       format: "A4",
