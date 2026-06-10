@@ -139,7 +139,7 @@ exports.generateExpensePDF = async (req, res) => {
       headless: chromium.headless,
     });
     const page = await browser.newPage();
-    const html = generateExpenseHTML(expenses);
+    const html = generateExpenseHTML([expenses]);
     await page.setContent(html, { waitUntil: "networkidle0" });
     const pdf = await page.pdf({
       format: "A4",
