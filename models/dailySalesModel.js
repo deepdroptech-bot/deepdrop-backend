@@ -245,9 +245,10 @@ dailySalesSchema.pre("save", async function (next) {
 
     pump.sales.forEach((segment) => {
       // Validation
-      // if (segment.closingMeter < segment.openingMeter) {
-      //   throw new Error(`Pump ${pump.pumpNumber} closing meter cannot be less than opening meter`);
-      // }
+      if (segment.closingMeter < segment.openingMeter) {
+        throw new Error(`Pump ${pump.pumpNumber} closing meter cannot be less than opening meter`);
+      }
+
       segment.meterLitres = (segment.closingMeter || 0) - segment.openingMeter;
       segment.netLitresSold = segment.meterLitres - segment.calibrationLitres;
 
