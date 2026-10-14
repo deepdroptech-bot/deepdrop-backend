@@ -231,9 +231,9 @@ dailySalesSchema.pre("validate", function(next) {
 dailySalesSchema.pre("save", async function (next) {
   // 1️⃣ Sync pump segments and next day opening meters
   syncPumpSegments(this);
-  // if (this.isNew) {
-  //   await carryForwardPreviousDayMeters(this);
-  // }
+  if (this.isNew) {
+    await carryForwardPreviousDayMeters(this);
+  }
 
   /* ===== PMS CALCULATIONS ===== */
   let pmsTotalLitres = 0;
@@ -245,9 +245,9 @@ dailySalesSchema.pre("save", async function (next) {
 
     pump.sales.forEach((segment) => {
       // Validation
-      // if (segment.closingMeter < segment.openingMeter) {
-      //   throw new Error(`Pump ${pump.pumpNumber} closing meter cannot be less than opening meter`);
-      // }
+      if (segment.closingMeter < segment.openingMeter) {
+        throw new Error(`Pump ${pump.pumpNumber} closing meter cannot be less than opening meter`);
+      }
 
       segment.meterLitres = (segment.closingMeter || 0) - segment.openingMeter;
       segment.netLitresSold = segment.meterLitres - segment.calibrationLitres;
